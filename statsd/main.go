@@ -233,6 +233,20 @@ type SimpleSender struct {
 	c net.PacketConn
 	// resolved udp address
 	ra *net.UDPAddr
+	// the hostname address
+	h string
+	// last time we resolved the address
+	lr time.Time
+}
+
+func (s *SimpleSender) reResolve() {
+	if time.Now().Sub(s.lr) > 30*time.Second {
+		ra, err := net.ResolveUDPAddr("udp", s.h)
+		if err == nil {
+			s.ra = ra
+		}
+		s.lr = time.Now()
+	}
 }
 
 // Send sends the data to the server endpoint.
@@ -241,9 +255,11 @@ func (s *SimpleSender) Send(data []byte) (int, error) {
 	// already serialized writes
 	n, err := s.c.(*net.UDPConn).WriteToUDP(data, s.ra)
 	if err != nil {
+		s.reResolve()
 		return 0, err
 	}
 	if n == 0 {
+		s.reResolve()
 		return n, errors.New("Wrote no bytes")
 	}
 	return n, nil
@@ -273,6 +289,8 @@ func NewSimpleSender(addr string) (Sender, error) {
 	sender := &SimpleSender{
 		c:  c,
 		ra: ra,
+		h:  addr,
+		lr: time.Now(),
 	}
 
 	return sender, nil
